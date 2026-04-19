@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+output_videos/
+bg_cache/
+dist/
+build/
+*.spec
+*.exe
+ffmpeg.exe
+ffprobe.exe
+ffplay.exe
+config.json
+*.mp4
+*.mp3
+*.wav

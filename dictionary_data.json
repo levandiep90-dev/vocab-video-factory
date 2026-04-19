@@ -1,0 +1,516 @@
+{
+    "ACTIONS": {
+        "run": {
+            "meaning": "chạy",
+            "example": "I run every morning."
+        },
+        "walk": {
+            "meaning": "đi bộ",
+            "example": "I walk to school."
+        },
+        "jump": {
+            "meaning": "nhảy",
+            "example": "The boy jumps high."
+        },
+        "climb": {
+            "meaning": "leo trèo",
+            "example": "She climbs a tree."
+        },
+        "eat": {
+            "meaning": "ăn",
+            "example": "I eat rice."
+        },
+        "drink": {
+            "meaning": "uống",
+            "example": "I drink water."
+        },
+        "stand": {
+            "meaning": "đứng",
+            "example": "Please stand here."
+        },
+        "sit": {
+            "meaning": "ngồi",
+            "example": "Sit on the chair."
+        },
+        "sleep": {
+            "meaning": "ngủ",
+            "example": "The baby sleeps."
+        },
+        "wake up": {
+            "meaning": "thức dậy",
+            "example": "I wake up early."
+        },
+        "laugh": {
+            "meaning": "cười",
+            "example": "She laughs happily."
+        },
+        "cry": {
+            "meaning": "khóc",
+            "example": "The baby cries."
+        },
+        "open": {
+            "meaning": "mở",
+            "example": "Open the door."
+        },
+        "close": {
+            "meaning": "đóng",
+            "example": "Close the door."
+        },
+        "push": {
+            "meaning": "đẩy",
+            "example": "Push the door."
+        },
+        "pull": {
+            "meaning": "kéo",
+            "example": "Pull the rope."
+        },
+        "throw": {
+            "meaning": "ném",
+            "example": "Throw the ball."
+        },
+        "catch": {
+            "meaning": "bắt",
+            "example": "Catch the ball."
+        },
+        "write": {
+            "meaning": "viết",
+            "example": "I write my name."
+        },
+        "read": {
+            "meaning": "đọc",
+            "example": "I read a book."
+        },
+        "draw": {
+            "meaning": "vẽ",
+            "example": "I draw a picture."
+        },
+        "color": {
+            "meaning": "tô màu",
+            "example": "Color the picture."
+        },
+        "cut": {
+            "meaning": "cắt",
+            "example": "Cut the paper."
+        },
+        "glue": {
+            "meaning": "dán",
+            "example": "Glue the paper."
+        },
+        "swim": {
+            "meaning": "bơi",
+            "example": "Fish swim in water."
+        },
+        "dance": {
+            "meaning": "nhảy múa",
+            "example": "She dances well."
+        },
+        "sing": {
+            "meaning": "hát",
+            "example": "He sings a song."
+        },
+        "stop": {
+            "meaning": "dừng lại",
+            "example": "Stop here."
+        },
+        "run fast": {
+            "meaning": "chạy nhanh",
+            "example": "I run fast."
+        },
+        "walk slow": {
+            "meaning": "đi chậm",
+            "example": "Walk slowly."
+        }
+    },
+    "ANIMALS": {
+        "dog": {
+            "meaning": "con chó",
+            "example": "The dog is running."
+        },
+        "cat": {
+            "meaning": "con mèo",
+            "example": "The cat is sleeping."
+        },
+        "bird": {
+            "meaning": "con chim",
+            "example": "A bird can fly."
+        },
+        "fish": {
+            "meaning": "con cá",
+            "example": "Fish swim in water."
+        },
+        "rabbit": {
+            "meaning": "con thỏ",
+            "example": "The rabbit jumps."
+        },
+        "duck": {
+            "meaning": "con vịt",
+            "example": "The duck swims."
+        },
+        "chicken": {
+            "meaning": "con gà",
+            "example": "The chicken is eating."
+        },
+        "cow": {
+            "meaning": "con bò",
+            "example": "The cow eats grass."
+        },
+        "pig": {
+            "meaning": "con lợn",
+            "example": "The pig is fat."
+        },
+        "horse": {
+            "meaning": "con ngựa",
+            "example": "The horse runs fast."
+        },
+        "sheep": {
+            "meaning": "con cừu",
+            "example": "The sheep is white."
+        },
+        "goat": {
+            "meaning": "con dê",
+            "example": "The goat climbs."
+        },
+        "lion": {
+            "meaning": "con sư tử",
+            "example": "The lion is strong."
+        },
+        "tiger": {
+            "meaning": "con hổ",
+            "example": "The tiger is big."
+        },
+        "elephant": {
+            "meaning": "con voi",
+            "example": "The elephant is big."
+        },
+        "monkey": {
+            "meaning": "con khỉ",
+            "example": "The monkey climbs."
+        },
+        "bear": {
+            "meaning": "con gấu",
+            "example": "The bear eats honey."
+        },
+        "giraffe": {
+            "meaning": "con hươu cao cổ",
+            "example": "The giraffe is tall."
+        },
+        "frog": {
+            "meaning": "con ếch",
+            "example": "The frog jumps."
+        },
+        "snake": {
+            "meaning": "con rắn",
+            "example": "The snake is long."
+        },
+        "turtle": {
+            "meaning": "con rùa",
+            "example": "The turtle walks slowly."
+        },
+        "crocodile": {
+            "meaning": "con cá sấu",
+            "example": "The crocodile is dangerous."
+        },
+        "fox": {
+            "meaning": "con cáo",
+            "example": "The fox is clever."
+        },
+        "wolf": {
+            "meaning": "con sói",
+            "example": "The wolf howls."
+        },
+        "bee": {
+            "meaning": "con ong",
+            "example": "The bee makes honey."
+        },
+        "butterfly": {
+            "meaning": "con bướm",
+            "example": "The butterfly is beautiful."
+        },
+        "ant": {
+            "meaning": "con kiến",
+            "example": "The ant is small."
+        },
+        "spider": {
+            "meaning": "con nhện",
+            "example": "The spider spins a web."
+        },
+        "fly": {
+            "meaning": "con ruồi",
+            "example": "The fly is annoying."
+        },
+        "mosquito": {
+            "meaning": "con muỗi",
+            "example": "The mosquito bites."
+        }
+    },
+    "FOOD": {
+        "apple": {
+            "meaning": "quả táo",
+            "example": "I eat an apple."
+        },
+        "banana": {
+            "meaning": "quả chuối",
+            "example": "She eats a banana."
+        },
+        "bread": {
+            "meaning": "bánh mì",
+            "example": "I eat bread."
+        },
+        "milk": {
+            "meaning": "sữa",
+            "example": "I drink milk."
+        },
+        "water": {
+            "meaning": "nước",
+            "example": "Drink water."
+        },
+        "orange": {
+            "meaning": "quả cam",
+            "example": "The orange is sweet."
+        },
+        "mango": {
+            "meaning": "quả xoài",
+            "example": "I like mango."
+        },
+        "grape": {
+            "meaning": "quả nho",
+            "example": "Grapes are sweet."
+        },
+        "watermelon": {
+            "meaning": "dưa hấu",
+            "example": "Watermelon is big."
+        },
+        "pineapple": {
+            "meaning": "dứa",
+            "example": "Pineapple is tasty."
+        },
+        "strawberry": {
+            "meaning": "dâu tây",
+            "example": "Strawberries are red."
+        },
+        "lemon": {
+            "meaning": "chanh",
+            "example": "Lemon is sour."
+        },
+        "peach": {
+            "meaning": "đào",
+            "example": "The peach is soft."
+        },
+        "pear": {
+            "meaning": "lê",
+            "example": "The pear is sweet."
+        },
+        "cherry": {
+            "meaning": "anh đào",
+            "example": "Cherries are small."
+        },
+        "rice": {
+            "meaning": "cơm",
+            "example": "I eat rice."
+        },
+        "noodles": {
+            "meaning": "mì",
+            "example": "I eat noodles."
+        },
+        "soup": {
+            "meaning": "súp",
+            "example": "The soup is hot."
+        },
+        "egg": {
+            "meaning": "trứng",
+            "example": "I eat an egg."
+        },
+        "meat": {
+            "meaning": "thịt",
+            "example": "I eat meat."
+        },
+        "fish food": {
+            "meaning": "cá (món ăn)",
+            "example": "I eat fish."
+        },
+        "juice": {
+            "meaning": "nước ép",
+            "example": "I drink juice."
+        },
+        "tea": {
+            "meaning": "trà",
+            "example": "I drink tea."
+        },
+        "coffee": {
+            "meaning": "cà phê",
+            "example": "I drink coffee."
+        },
+        "cake": {
+            "meaning": "bánh",
+            "example": "I eat cake."
+        },
+        "candy": {
+            "meaning": "kẹo",
+            "example": "I like candy."
+        },
+        "chocolate": {
+            "meaning": "sô cô la",
+            "example": "Chocolate is sweet."
+        },
+        "cookie": {
+            "meaning": "bánh quy",
+            "example": "I eat cookies."
+        },
+        "donut": {
+            "meaning": "bánh donut",
+            "example": "The donut is sweet."
+        },
+        "pizza": {
+            "meaning": "pizza",
+            "example": "I eat pizza."
+        },
+        "burger": {
+            "meaning": "hamburger",
+            "example": "I eat a burger."
+        }
+    },
+    "COLORS": {
+        "red": {
+            "meaning": "màu đỏ",
+            "example": "The apple is red."
+        },
+        "blue": {
+            "meaning": "màu xanh dương",
+            "example": "The sky is blue."
+        },
+        "yellow": {
+            "meaning": "màu vàng",
+            "example": "The sun is yellow."
+        },
+        "green": {
+            "meaning": "màu xanh lá",
+            "example": "The tree is green."
+        },
+        "black": {
+            "meaning": "màu đen",
+            "example": "The cat is black."
+        },
+        "white": {
+            "meaning": "màu trắng",
+            "example": "The sheep is white."
+        },
+        "orange color": {
+            "meaning": "màu cam",
+            "example": "The orange is orange."
+        },
+        "purple": {
+            "meaning": "màu tím",
+            "example": "The flower is purple."
+        },
+        "pink": {
+            "meaning": "màu hồng",
+            "example": "The dress is pink."
+        },
+        "brown": {
+            "meaning": "màu nâu",
+            "example": "The bear is brown."
+        },
+        "gray": {
+            "meaning": "màu xám",
+            "example": "The sky is gray."
+        }
+    },
+    "NUMBERS": {
+        "one": {
+            "meaning": "một",
+            "example": "I have one book."
+        },
+        "two": {
+            "meaning": "hai",
+            "example": "Two cats are here."
+        },
+        "three": {
+            "meaning": "ba",
+            "example": "I see three dogs."
+        },
+        "four": {
+            "meaning": "bốn",
+            "example": "Four apples are here."
+        },
+        "five": {
+            "meaning": "năm",
+            "example": "I have five fingers."
+        },
+        "six": {
+            "meaning": "sáu",
+            "example": "Six birds fly."
+        },
+        "seven": {
+            "meaning": "bảy",
+            "example": "Seven days a week."
+        },
+        "eight": {
+            "meaning": "tám",
+            "example": "Eight cookies."
+        },
+        "nine": {
+            "meaning": "chín",
+            "example": "Nine balls."
+        },
+        "ten": {
+            "meaning": "mười",
+            "example": "Ten fingers."
+        }
+    },
+    "FAMILY": {
+        "father": {
+            "meaning": "bố",
+            "example": "My father is kind."
+        },
+        "mother": {
+            "meaning": "mẹ",
+            "example": "My mother cooks."
+        },
+        "brother": {
+            "meaning": "anh/em trai",
+            "example": "My brother plays."
+        },
+        "sister": {
+            "meaning": "chị/em gái",
+            "example": "My sister sings."
+        },
+        "baby": {
+            "meaning": "em bé",
+            "example": "The baby sleeps."
+        },
+        "grandma": {
+            "meaning": "bà",
+            "example": "Grandma loves me."
+        },
+        "grandpa": {
+            "meaning": "ông",
+            "example": "Grandpa tells stories."
+        },
+        "family": {
+            "meaning": "gia đình",
+            "example": "I love my family."
+        },
+        "friend": {
+            "meaning": "bạn bè",
+            "example": "My friend is nice."
+        }
+    },
+    "COMMANDS": {
+        "sit down": {
+            "meaning": "ngồi xuống",
+            "example": "Please sit down."
+        },
+        "stand up": {
+            "meaning": "đứng lên",
+            "example": "Stand up."
+        },
+        "come here": {
+            "meaning": "lại đây",
+            "example": "Come here."
+        },
+        "go home": {
+            "meaning": "về nhà",
+            "example": "Go home."
+        }
+    }
+}

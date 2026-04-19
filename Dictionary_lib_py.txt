@@ -1,0 +1,146 @@
+# dictionary_lib_py
+
+## Giới thiệu
+
+`dictionary_lib_py` là một thư viện Python hỗ trợ quản lý từ điển offline cho các ứng dụng học từ vựng. Thư viện cung cấp các chức năng như lưu trữ, tra cứu, tìm kiếm, quản lý nhóm và từ vựng, xuất/nhập dữ liệu, phù hợp cho các ứng dụng học ngoại ngữ cá nhân hoặc nhóm nhỏ.
+
+---
+
+## Cấu trúc dữ liệu
+
+- **Dữ liệu từ điển** được lưu dưới dạng file JSON (`dictionary_data.json`) với cấu trúc:
+
+```json
+{
+    "GROUP_NAME": {
+        "word": {
+            "meaning": "nghĩa tiếng Việt",
+            "example": "ví dụ sử dụng"
+        },
+        ...
+    },
+    ...
+}
+```
+
+- **Ví dụ nhóm và từ**:
+
+| Nhóm      | Từ    | Nghĩa      | Ví dụ                  |
+|-----------|-------|------------|------------------------|
+| ACTIONS   | run   | chạy       | I run every morning.   |
+| ANIMALS   | dog   | con chó    | The dog is barking.    |
+| FOOD      | apple | quả táo    | I eat an apple every day. |
+
+---
+
+## Các chức năng chính
+
+### 1. Khởi tạo và lưu trữ
+- **Tự động tạo file dữ liệu nếu chưa tồn tại**
+- **Lưu và tải dữ liệu từ file JSON**
+
+### 2. Quản lý nhóm từ
+- Thêm, xóa, đổi tên nhóm
+- Lấy danh sách nhóm
+
+### 3. Quản lý từ vựng
+- Thêm, cập nhật, xóa từ trong nhóm
+- Lấy danh sách từ trong nhóm
+
+### 4. Tra cứu và tìm kiếm
+- Tra cứu nhanh nghĩa và ví dụ của từ
+- Tìm kiếm theo từ tiếng Anh hoặc nghĩa tiếng Việt
+
+### 5. Thống kê
+- Thống kê số lượng nhóm và tổng số từ
+
+### 6. Xuất/Nhập dữ liệu
+- Xuất dữ liệu từ điển ra file JSON khác
+- Nhập dữ liệu từ file JSON (ghi đè hoặc gộp)
+
+### 7. Hỗ trợ singleton và hàm tiện lợi
+- Sử dụng singleton để quản lý duy nhất một instance từ điển trong ứng dụng
+- Hàm tiện lợi `lookup_word`, `search_words` cho tra cứu nhanh
+
+---
+
+## API chi tiết
+
+### Khởi tạo
+```python
+from dictionary_lib_py import DictionaryLib
+lib = DictionaryLib()
+```
+
+### Thêm từ mới
+```python
+lib.add_word('FOOD', 'banana', 'quả chuối', 'Bananas are yellow.')
+```
+
+### Tra cứu từ
+```python
+meaning, example, group = lib.lookup('dog')
+```
+
+### Tìm kiếm từ hoặc nghĩa
+```python
+results = lib.search('chó')
+# Trả về danh sách (word, meaning, example, group)
+```
+
+### Thêm nhóm mới
+```python
+lib.add_group('SPORTS')
+```
+
+### Đổi tên nhóm
+```python
+lib.rename_group('FOOD', 'FRUITS')
+```
+
+### Xóa từ hoặc nhóm
+```python
+lib.delete_word('ANIMALS', 'cat')
+lib.delete_group('ACTIONS')
+```
+
+### Thống kê
+```python
+stats = lib.get_stats()
+# stats = {'groups': 3, 'words': 6}
+```
+
+### Xuất/Nhập dữ liệu
+```python
+lib.export_json('backup.json')
+lib.import_json('backup.json', overwrite=True)
+```
+
+---
+
+## Singleton và hàm tiện lợi
+
+```python
+from dictionary_lib_py import lookup_word, search_words
+result = lookup_word('apple')
+results = search_words('bánh mì')
+```
+
+---
+
+## Ứng dụng thực tế
+- Ứng dụng học từ vựng offline
+- Quản lý từ vựng cá nhân, nhóm học
+- Tích hợp vào các phần mềm luyện thi, flashcard
+
+---
+
+## Lưu ý
+- Dữ liệu được lưu trực tiếp tại thư mục chạy ứng dụng
+- Hỗ trợ Unicode, phù hợp cho tiếng Việt và các ngôn ngữ khác
+- Có thể mở rộng thêm các trường dữ liệu khác nếu cần
+
+---
+
+## Liên hệ & Đóng góp
+- Đóng góp hoặc báo lỗi qua Github hoặc email của tác giả
