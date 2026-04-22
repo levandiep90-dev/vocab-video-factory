@@ -1,6 +1,8 @@
 import os
 import sys
 import csv
+from dict_manager_ui import open_dict_manager_window
+from post_manager import PostManagerTab
 import json
 import random
 import threading
@@ -38,16 +40,16 @@ GRADIENT_THEMES = [
 ]
 
 # ===== LOGO CONFIG =====
-LOGO_ENABLED = False
-LOGO_PATH    = ""       # đường dẫn file PNG
+LOGO_ENABLED = True
+LOGO_PATH    = os.path.join(BASE_DIR, "logo.jpg")
 LOGO_SIZE    = 80       # kích thước px
-LOGO_POS     = "top-left"   # top-left | top-right | bottom-left | bottom-right
-LOGO_ALPHA   = 0.85     # độ trong suốt
+LOGO_POS     = "top-left"
+LOGO_ALPHA   = 0.85     # độ trong suốt (chỉ có tác dụng với PNG)
 
 # =========================================================
 # AI CONFIG
 # =========================================================
-AI_PROVIDER = "offline"
+AI_PROVIDER = "gemini"
 GEMINI_API_KEY = "AIzaSyCzVQJOuQBq3PrVq6QmZSYW0p3vEBZyRz4"
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
@@ -64,6 +66,17 @@ EDGE_VOICE_VI = "vi-VN-HoaiMyNeural"
 
 # ================= BACKGROUND VIDEO CONFIG =================
 BG_SOURCE = "pexels"  # "pexels" | "pixabay" | "giphy" | "mixkit" | "none"
+VIDEO_THEME = "none"  # "none" | "funny" | "kids" | "serious" | "nature" | "cartoon"
+
+# Từ khoá bổ sung khi tìm video theo chủ đề
+_THEME_KEYWORDS = {
+    "funny":   "funny cute",
+    "kids":    "kids cartoon colorful",
+    "serious": "cinematic professional",
+    "nature":  "nature outdoor",
+    "cartoon": "cartoon animated",
+    "none":    "",
+}
 
 PEXELS_API_KEY    = "eGrAHB19dv61ecn12RJJRLncjWraIPV7JEKWddx8eUpAkP41kJ9aXNUJ"
 PIXABAY_API_KEY   = "55500745-51b288484ac4fec66370bf668"
@@ -71,20 +84,24 @@ GIPHY_API_KEY     = "UDw6zTOcvK4sn9GrQpOGf27hd8LKTNvA"
 
 BG_VIDEO_DIR = os.path.join(BASE_DIR, "bg_cache")  # cache video tải về
 
-# =====================================================
-# THÊM LẠI PROMPT_TEMPLATE (đã bị xóa nhầm)
-# =====================================================
-PROMPT_TEMPLATE = """Bạn là từ điển tiếng Anh - tiếng Việt.
-Cho từ tiếng Anh: "{word}"
-Hãy trả về JSON theo đúng định dạng sau (không giải thích thêm):
-{{"meaning": "nghĩa tiếng Việt ngắn gọn", "example": "1 câu ví dụ tiếng Anh đơn giản dưới 10 từ"}}"""
-
-
 # =========================================================
 # AI LOOKUP
 # =========================================================
+_GEMINI_PROMPT = (
+    'Dịch từ tiếng Anh sang tiếng Việt. Quy tắc bắt buộc:\n'
+    '- meaning: CHỈ 1-3 từ tiếng Việt, KHÔNG giải thích, KHÔNG dấu câu thừa\n'
+    '- example: 1 câu tiếng Anh ngắn (tối đa 8 từ), tự nhiên, KHÔNG bắt đầu bằng "This is"\n'
+    '  Gợi ý mẫu câu đa dạng: "She loves...", "He can...", "I always...", "They are...", "We need..."\n'
+    'Ví dụ đúng: duck → {{"meaning":"con vịt","example":"The duck swims in the pond."}}\n'
+    'Ví dụ đúng: happy → {{"meaning":"vui vẻ","example":"She feels happy today."}}\n'
+    'Ví dụ đúng: run → {{"meaning":"chạy","example":"He runs every morning."}}\n'
+    'Ví dụ SAI: duck → {{"meaning":"một loài chim sống dưới nước","example":"This is a duck."}}\n'
+    'Từ cần dịch: "{word}"\n'
+    'Chỉ trả về JSON, không thêm gì khác.'
+)
+
 def _call_gemini(word, api_key):
-    prompt = PROMPT_TEMPLATE.format(word=word)
+    prompt = _GEMINI_PROMPT.format(word=word)
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
@@ -99,103 +116,64 @@ def _call_gemini(word, api_key):
     text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
     text = text.replace("```json", "").replace("```", "").strip()
     result = json.loads(text)
-    return result["meaning"], result["example"]
+    meaning = result["meaning"].strip()
+    example = result["example"].strip()
+    # Bảo vệ: nếu AI vẫn trả về nghĩa dài → lấy phần trước dấu phẩy/chấm đầu tiên
+    if len(meaning) > 20:
+        meaning = meaning.split(",")[0].split(".")[0].strip()
+    return meaning, example
 
 
-# ✅ MỚI - dùng dictionary_lib
-def lookup_word_offline(word):
-    result = lookup_word(word)   # gọi từ dictionary_lib
-    if result:
-        meaning, example, group = result
-        return meaning, example
-    return f"[{word}]", f"This is {word}."
+import random as _random
+
+_FALLBACK_EXAMPLE_TEMPLATES = [
+    "She loves the {w}.",
+    "He uses a {w} every day.",
+    "I can see a {w} here.",
+    "They found a {w} outside.",
+    "We need a {w} now.",
+    "The {w} is very useful.",
+    "Look at that {w}!",
+    "She has a beautiful {w}.",
+]
+
+def _make_fallback_example(word: str) -> str:
+    """Tạo câu ví dụ đa dạng khi không có AI."""
+    w = word.lower()
+    return _random.choice(_FALLBACK_EXAMPLE_TEMPLATES).format(w=w)
 
 
 def ai_lookup_word(word, provider=None, gemini_key=None):
     p = provider or AI_PROVIDER
     gk = gemini_key or GEMINI_API_KEY
 
-    # ✅ 1. OFFLINE trước - dùng dictionary_lib
+    # 1. Offline dict trước (nhanh nhất)
     result = lookup_word(word)
     if result:
         meaning, example, group = result
         return meaning, example, "offline"
 
-    # ✅ 2. GEMINI
+    # 2. Gemini AI (nếu có API key)
     if p == "gemini" and gk:
         try:
             meaning, example = _call_gemini(word, gk)
             if meaning and example:
+                save_to_offline(word, meaning, example)
                 return meaning, example, "gemini"
         except Exception as e:
             print(f"[AI] Gemini fail: {word} → {e}")
 
-    # ✅ 3. ONLINE DICTIONARY
-    meaning, example = lookup_online_dictionary(word)
-    if meaning:
-        save_to_offline(word, meaning, example)
-        return meaning, example, "online-dict"
-
-    # ✅ 4. GOOGLE TRANSLATE
+    # 3. Google Translate — dịch từ gốc trực tiếp → nghĩa ngắn gọn
     vi = translate_google(word)
     if vi:
-        return vi, f"This is {word}.", "google"
+        example = _make_fallback_example(word)
+        save_to_offline(word, vi, example)
+        return vi, example, "google"
 
-    # ✅ 5. FALLBACK
-    return f"(nghĩa của {word})", f"This is {word}.", "fallback"
-
-def lookup_online_dictionary(word):
-    try:
-        import requests
-
-        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
-        r = requests.get(url, timeout=10)
-
-        if r.status_code != 200:
-            return None, None
-
-        data = r.json()
-        meanings = data[0].get("meanings", [])
-
-        if not meanings:
-            return None, None
-
-        # ✅ Ưu tiên noun (đặc biệt cho duck)
-        noun_meaning = None
-        for m in meanings:
-            if m.get("partOfSpeech") == "noun":
-                noun_meaning = m
-                break
-
-        target = noun_meaning or meanings[0]
-
-        definition = target["definitions"][0]
-        meaning_en = definition.get("definition", "")
-        example = definition.get("example", f"This is {word}.")
-
-        # ✅ dịch
-        meaning_vi = translate_google(meaning_en)
-
-        # ❌ QUAN TRỌNG: nếu dịch fail → bỏ luôn
-        if not meaning_vi or len(meaning_vi.strip()) == 0:
-            return None, None
-
-        # ✅ cắt ngắn nghĩa
-        meaning_vi = meaning_vi.split(".")[0]
-        if len(meaning_vi) > 50:
-            meaning_vi = meaning_vi[:50]
-
-        return meaning_vi, example
-
-    except Exception as e:
-        print(f"[ONLINE] dictionaryapi fail: {e}")
-        return None, None
+    # 4. Fallback
+    return f"({word})", _make_fallback_example(word), "fallback"
 
 
-    except Exception as e:
-        print(f"[ONLINE] dictionaryapi fail: {e}")
-        return None, None
-    
 def translate_google(word):
     """Dịch Anh → Việt"""
     try:
@@ -456,43 +434,42 @@ def tts_edge(text, output_file, voice=None):
 def is_audio_valid(path):
     return os.path.exists(path) and os.path.getsize(path) > 1000
 
+import time as _time
+
+def _tts_edge_with_retry(text, output_file, voice, retries=3):
+    """Gọi edge_tts với retry tự động, xử lý lỗi mạng/rate limit."""
+    clean_text = text.replace("...", "").strip() or text
+    attempts = [text, clean_text, clean_text]  # lần 1: có pause, lần 2-3: không pause
+    last_err = None
+    for i, t in enumerate(attempts[:retries]):
+        try:
+            asyncio.run(_edge_tts_async(t, output_file, voice))
+            if is_audio_valid(output_file):
+                return
+        except Exception as e:
+            last_err = e
+            print(f"[TTS] edge retry {i+1}/{retries}: '{t[:30]}' → {e}")
+            _time.sleep(1.5 * (i + 1))
+    raise RuntimeError(f"edge_tts thất bại sau {retries} lần: {last_err}")
+
+
 def make_tts_smart(word, meaning, example, prefix):
     wav_word = prefix + "_word.mp3"
     wav_mean = prefix + "_mean.mp3"
     wav_ex   = prefix + "_ex.mp3"
 
-    PAUSE = "..."  # pause nhẹ giữa các đoạn
+    PAUSE = "..."
 
     if VOICE_MODE == "edge":
-        try:
-            tts_edge(word + PAUSE, wav_word, EDGE_VOICE_EN)
-            if not is_audio_valid(wav_word):
-                raise Exception("word audio empty")
-        except Exception as e:
-            print(f"[TTS] Retry word: {word} → {e}")
-            tts_edge(word, wav_word, EDGE_VOICE_EN)
-
-        try:
-            tts_edge(meaning + PAUSE, wav_mean, EDGE_VOICE_VI)
-            if not is_audio_valid(wav_mean):
-                raise Exception("meaning audio empty")
-        except Exception as e:
-            print(f"[TTS] Retry meaning: {meaning} → {e}")
-            tts_edge(meaning, wav_mean, EDGE_VOICE_VI)
-
-        try:
-            tts_edge(example + PAUSE, wav_ex, EDGE_VOICE_EN)
-            if not is_audio_valid(wav_ex):
-                raise Exception("example audio empty")
-        except Exception as e:
-            print(f"[TTS] Retry example: {example} → {e}")
-            tts_edge(example, wav_ex, EDGE_VOICE_EN)
+        _tts_edge_with_retry(word + PAUSE, wav_word, EDGE_VOICE_EN)
+        _tts_edge_with_retry(meaning + PAUSE, wav_mean, EDGE_VOICE_VI)
+        _tts_edge_with_retry(example + PAUSE, wav_ex, EDGE_VOICE_EN)
 
     elif VOICE_MODE == "eleven":
         try:
             tts_elevenlabs(word + PAUSE, wav_word)
             if not is_audio_valid(wav_word):
-                raise Exception("word audio empty")
+                raise Exception("empty")
         except Exception as e:
             print(f"[TTS] Eleven fail word: {e}")
             tts_elevenlabs(word, wav_word)
@@ -500,7 +477,7 @@ def make_tts_smart(word, meaning, example, prefix):
         try:
             tts_elevenlabs(meaning + PAUSE, wav_mean)
             if not is_audio_valid(wav_mean):
-                raise Exception("meaning audio empty")
+                raise Exception("empty")
         except Exception as e:
             print(f"[TTS] Eleven fail meaning: {e}")
             tts_elevenlabs(meaning, wav_mean)
@@ -508,7 +485,7 @@ def make_tts_smart(word, meaning, example, prefix):
         try:
             tts_elevenlabs(example + PAUSE, wav_ex)
             if not is_audio_valid(wav_ex):
-                raise Exception("example audio empty")
+                raise Exception("empty")
         except Exception as e:
             print(f"[TTS] Eleven fail example: {e}")
             tts_elevenlabs(example, wav_ex)
@@ -519,19 +496,17 @@ def make_tts_smart(word, meaning, example, prefix):
             if not is_audio_valid(wav_word):
                 raise Exception("empty")
         except:
-            tts_edge(word + PAUSE, wav_word, EDGE_VOICE_EN)
+            _tts_edge_with_retry(word + PAUSE, wav_word, EDGE_VOICE_EN)
 
         try:
             tts_elevenlabs(example + PAUSE, wav_ex)
             if not is_audio_valid(wav_ex):
                 raise Exception("empty")
         except:
-            tts_edge(example + PAUSE, wav_ex, EDGE_VOICE_EN)
+            _tts_edge_with_retry(example + PAUSE, wav_ex, EDGE_VOICE_EN)
 
         try:
-            tts_edge(meaning + PAUSE, wav_mean, EDGE_VOICE_VI)
-            if not is_audio_valid(wav_mean):
-                raise Exception("empty")
+            _tts_edge_with_retry(meaning + PAUSE, wav_mean, EDGE_VOICE_VI)
         except:
             tts_elevenlabs(meaning + PAUSE, wav_mean)
 
@@ -737,6 +712,13 @@ def download_bg_file(url, dest_path):
         print(f"[download] Lỗi: {e}")
         return False
 
+
+
+def build_search_keyword(word: str, theme: str = None) -> str:
+    """Ghép từ + chủ đề thành chuỗi tìm kiếm video."""
+    t = theme or VIDEO_THEME
+    suffix = _THEME_KEYWORDS.get(t, "")
+    return f"{word} {suffix}".strip()
 
 
 def get_bg_video(keyword, source=None):
@@ -1043,7 +1025,7 @@ $s.Dispose();
         bg_file = None
         if BG_SOURCE != "none":
             try:
-                bg_file = get_bg_video(word, BG_SOURCE)
+                bg_file = get_bg_video(build_search_keyword(word), BG_SOURCE)
             except Exception:
                 bg_file = None
 
@@ -1303,6 +1285,7 @@ class App:
         self._build_tab_logo(make_tab("🖼️ Logo"))
         self._build_tab_ai(make_tab("🤖 AI"))
         self._build_tab_dictionary(make_tab("📚 Dictionary"))
+        self._build_tab_posts(make_tab("📰 Bài viết"))
         self._build_tab_system(make_tab("⚙️ System"))
 
     # ==================== TAB 1: NHẬP TỪ ====================
@@ -1446,6 +1429,29 @@ class App:
         key_frame = tk.LabelFrame(parent, text="API Keys", bg="#f0f4f8")
         key_frame.pack(fill="x", padx=20, pady=8)
 
+        # Theme chọn chủ đề video
+        theme_frame = tk.LabelFrame(parent, text="🎭 Chủ đề video (Video Theme)", bg="#f0f4f8")
+        theme_frame.pack(fill="x", padx=20, pady=8)
+        tk.Label(theme_frame,
+                 text="Kết hợp từ + chủ đề khi tìm kiếm video nền để tăng sự thu hút",
+                 fg="#6b7280", bg="#f0f4f8", font=("Segoe UI", 9)).pack(anchor="w", padx=10, pady=(4, 6))
+
+        self.video_theme_var = tk.StringVar(value=VIDEO_THEME)
+        theme_grid = tk.Frame(theme_frame, bg="#f0f4f8")
+        theme_grid.pack(anchor="w", padx=10, pady=(0, 8))
+        themes = [
+            ("🚫 Không dùng", "none"),
+            ("😂 Hài hước", "funny"),
+            ("👶 Trẻ em", "kids"),
+            ("🎯 Nghiêm túc", "serious"),
+            ("🌿 Thiên nhiên", "nature"),
+            ("🎨 Hoạt hình", "cartoon"),
+        ]
+        for col, (label, val) in enumerate(themes):
+            tk.Radiobutton(theme_grid, text=label, variable=self.video_theme_var,
+                           value=val, bg="#f0f4f8",
+                           font=("Segoe UI", 10)).grid(row=0, column=col, padx=8, sticky="w")
+
         self.pexels_key_var = tk.StringVar(value=PEXELS_API_KEY)
         self.pixabay_key_var = tk.StringVar(value=PIXABAY_API_KEY)
         self.giphy_key_var = tk.StringVar(value=GIPHY_API_KEY)
@@ -1588,6 +1594,10 @@ class App:
         except Exception:
             tk.Label(stats_frame, text="Chưa load được từ điển",
                      bg="#f0f4f8", fg="#ef4444").pack(pady=8)
+
+    # ==================== TAB 10: BÀI VIẾT ====================
+    def _build_tab_posts(self, parent):
+        PostManagerTab(parent, self)
 
     # ==================== TAB 9: SYSTEM ====================
     def _build_tab_system(self, parent):
@@ -1930,13 +1940,14 @@ class App:
 
     # ==================== SETTINGS SAVE ====================
     def save_settings(self):
-        global VOICE_MODE, BG_SOURCE
+        global VOICE_MODE, BG_SOURCE, VIDEO_THEME
         global PEXELS_API_KEY, PIXABAY_API_KEY, GIPHY_API_KEY
         global ELEVENLABS_API_KEY
         global LOGO_ENABLED, LOGO_PATH, LOGO_SIZE, LOGO_POS, LOGO_ALPHA
 
         VOICE_MODE          = self.voice_mode_var.get()
         BG_SOURCE           = self.bg_source_var.get()
+        VIDEO_THEME         = self.video_theme_var.get()
         PEXELS_API_KEY      = self.pexels_key_var.get().strip()
         PIXABAY_API_KEY     = self.pixabay_key_var.get().strip()
         GIPHY_API_KEY       = self.giphy_key_var.get().strip()
@@ -1963,24 +1974,8 @@ class App:
 
     # ==================== DICT MANAGER ====================
     def open_dict_manager(self):
-        script = os.path.join(BASE_DIR, "dict_manager_ui.py")
-
-        if not os.path.exists(script):
-            messagebox.showerror(
-                "Không tìm thấy file",
-                f"Không tìm thấy:\n{script}\n\n"
-                "Hãy đảm bảo file dict_manager_ui.py nằm cùng thư mục với chương trình."
-            )
-            return
-
-        try:
-            subprocess.Popen(
-                [sys.executable, script],
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            )
-            self.safe_log("📚 Đã mở Dictionary Manager")
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể mở Dictionary Manager:\n{e}")
+        open_dict_manager_window(parent=self.root)
+        self.safe_log("📚 Đã mở Dictionary Manager")
 
 
 # =========================================================
