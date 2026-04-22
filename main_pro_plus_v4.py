@@ -66,16 +66,28 @@ EDGE_VOICE_VI = "vi-VN-HoaiMyNeural"
 
 # ================= BACKGROUND VIDEO CONFIG =================
 BG_SOURCE = "pexels"  # "pexels" | "pixabay" | "giphy" | "mixkit" | "none"
-VIDEO_THEME = "none"  # "none" | "funny" | "kids" | "serious" | "nature" | "cartoon"
+VIDEO_THEME = "none"  # "none" | "funny" | "kids" | "serious" | "nature" | "cartoon" | "anime" | "sport"
 
-# Từ khoá bổ sung khi tìm video theo chủ đề
-_THEME_KEYWORDS = {
-    "funny":   "funny cute",
-    "kids":    "kids cartoon colorful",
-    "serious": "cinematic professional",
-    "nature":  "nature outdoor",
-    "cartoon": "cartoon animated",
-    "none":    "",
+# Cấu hình chi tiết từng theme: prefix (đầu query) và suffix (cuối query)
+_THEME_CONFIG = {
+    "none":    {"prefix": "",                 "suffix": "",              "fallback": []},
+    "funny":   {"prefix": "funny",            "suffix": "",              "fallback": ["funny cute", "comedy"]},
+    "kids":    {"prefix": "cartoon kids",     "suffix": "",              "fallback": ["kids colorful", "children"]},
+    "serious": {"prefix": "",                 "suffix": "cinematic",     "fallback": ["professional", "dramatic"]},
+    "nature":  {"prefix": "nature",           "suffix": "outdoor",       "fallback": ["landscape", "outdoor"]},
+    "cartoon": {"prefix": "animated cartoon", "suffix": "",              "fallback": ["cartoon", "animation"]},
+    "anime":   {"prefix": "anime",            "suffix": "animated",      "fallback": ["anime", "japanese animation"]},
+    "sport":   {"prefix": "sport action",     "suffix": "",              "fallback": ["active", "sport"]},
+}
+
+# Stop-words khi trích keyword từ câu ví dụ
+_EXAMPLE_STOP_WORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her",
+    "this", "that", "these", "those", "to", "of", "in", "on", "at", "for",
+    "with", "by", "from", "up", "out", "as", "into", "and", "or", "but",
+    "so", "very", "can", "do", "does", "did", "have", "has", "had",
+    "not", "no", "its", "our", "their", "every", "all", "also",
 }
 
 PEXELS_API_KEY    = "eGrAHB19dv61ecn12RJJRLncjWraIPV7JEKWddx8eUpAkP41kJ9aXNUJ"
@@ -714,41 +726,169 @@ def download_bg_file(url, dest_path):
 
 
 
-def build_search_keyword(word: str, theme: str = None) -> str:
-    """Ghép từ + chủ đề thành chuỗi tìm kiếm video."""
+def _extract_visual_words(example: str, word: str) -> list:
+    """
+    Trích các từ hình ảnh (visual nouns/verbs) từ câu ví dụ.
+    Bỏ stop-words, giữ tối đa 3 từ có nghĩa nhất.
+    """
+    import re
+    tokens = re.findall(r"[a-zA-Z]+", example.lower())
+    word_lower = word.lower()
+    seen = set()
+    result = []
+    for t in tokens:
+        if t in _EXAMPLE_STOP_WORDS:
+            continue
+        # Loại chính từ đang học (đã có sẵn trong query chính)
+        if t == word_lower or t == word_lower + "s" or t == word_lower + "ing":
+            continue
+        if t not in seen:
+            seen.add(t)
+            result.append(t)
+        if len(result) >= 3:
+            break
+    return result
+
+
+def build_smart_keywords(word: str, example: str = "",
+                         theme: str = None, topic: str = "") -> list:
+    """
+    Xây dựng fallback-chain keyword để tìm video nền.
+    Kết hợp: từ vựng + chủ đề bài viết (topic) + từ visual trong câu ví dụ + style theme.
+    Trả về list[str] theo thứ tự ưu tiên — thử từng cái cho đến khi có kết quả.
+
+    Ví dụ:
+      word="swim", example="The duck swims in the pond.", theme="kids", topic="Animals"
+      → ["cartoon kids duck swim pond animals",
+         "cartoon kids duck swim pond",
+         "cartoon kids swim duck",
+         "cartoon kids swim",
+         "cartoon kids animals",
+         "kids colorful", "children"]
+    """
     t = theme or VIDEO_THEME
-    suffix = _THEME_KEYWORDS.get(t, "")
-    return f"{word} {suffix}".strip()
+    cfg = _THEME_CONFIG.get(t, _THEME_CONFIG["none"])
+    prefix  = cfg["prefix"]
+    suffix  = cfg["suffix"]
+    fallbacks = cfg["fallback"]
+
+    visual = _extract_visual_words(example, word)
+
+    # Chuẩn hoá topic thành 1-2 từ keyword hữu ích
+    topic_kw = ""
+    if topic:
+        import re as _re
+        topic_tokens = _re.findall(r"[a-zA-Z]+", topic.lower())
+        topic_kw = " ".join(
+            tok for tok in topic_tokens
+            if tok not in _EXAMPLE_STOP_WORDS and len(tok) > 2
+        )[:30]
+
+    def _q(*parts):
+        tokens = []
+        if prefix:
+            tokens.append(prefix)
+        tokens.extend([p for p in parts if p])
+        if suffix:
+            tokens.append(suffix)
+        return " ".join(tokens).strip()
+
+    chain = []
+
+    # Level 1: word + tất cả visual + topic (context đầy đủ nhất)
+    if visual and topic_kw:
+        chain.append(_q(word, visual[0], topic_kw))
+
+    # Level 2: word + visual + không topic
+    if visual:
+        chain.append(_q(word, *visual[:2]))
+
+    # Level 3: word + visual[0]
+    if visual:
+        chain.append(_q(word, visual[0]))
+
+    # Level 4: word + topic (bỏ visual)
+    if topic_kw:
+        chain.append(_q(word, topic_kw))
+
+    # Level 5: chỉ word + theme style
+    chain.append(_q(word))
+
+    # Level 6: topic + theme style (fallback không có word)
+    if topic_kw:
+        chain.append(_q(topic_kw))
+
+    # Level 7: visual + theme style
+    if visual:
+        chain.append(_q(visual[0]))
+
+    # Level 8: keyword thuần chủ đề UI
+    chain.extend(fallbacks)
+
+    # Loại trùng, giữ thứ tự
+    seen = set()
+    result = []
+    for kw in chain:
+        if kw and kw not in seen:
+            seen.add(kw)
+            result.append(kw)
+
+    return result if result else [word]
 
 
-def get_bg_video(keyword, source=None):
+def get_bg_video(word: str, example: str = "", source: str = None,
+                 theme: str = None, topic: str = ""):
+    """
+    Tìm và cache video nền phù hợp với từ + câu ví dụ + chủ đề bài viết + theme UI.
+    Thử lần lượt các keyword trong fallback chain cho đến khi có kết quả.
+
+    Args:
+        word:    Từ vựng đang học ("swim")
+        example: Câu ví dụ ("The duck swims in the pond.")
+        source:  Nguồn video ("pexels" / "pixabay" / "giphy" / "mixkit")
+        theme:   Theme UI ("kids" / "funny" / ...)
+        topic:   Chủ đề bài viết ("Animals" / "Food" / ...) — từ PostManager
+    """
     ensure_bg_dir()
     src = source or BG_SOURCE
+    t   = theme or VIDEO_THEME
 
-    safe_kw = keyword.lower().replace(" ", "_")[:20]
-
-    # Giphy giờ trả về MP4
-    ext = "mp4"   # ← tất cả đều là mp4
-    cache_path = os.path.join(BG_VIDEO_DIR, f"{src}_{safe_kw}.{ext}")
+    # Cache key: word + theme + topic (stable, không phụ thuộc visual)
+    theme_tag = t if t != "none" else "raw"
+    topic_tag = topic.lower().replace(" ", "_")[:10] if topic else ""
+    safe_word = word.lower().replace(" ", "_")[:15]
+    cache_name = f"{src}_{theme_tag}_{safe_word}"
+    if topic_tag:
+        cache_name += f"_{topic_tag}"
+    cache_path = os.path.join(BG_VIDEO_DIR, cache_name + ".mp4")
 
     if os.path.exists(cache_path) and os.path.getsize(cache_path) > 1000:
+        print(f"[BG] Cache hit: {os.path.basename(cache_path)}")
         return cache_path
 
-    url = None
-    if src == "pexels":
-        url = fetch_pexels_video(keyword)
-    elif src == "pixabay":
-        url = fetch_pixabay_video(keyword)
-    elif src == "giphy":
-        url = fetch_giphy_gif(keyword)
-    elif src == "mixkit":
-        url = fetch_mixkit_video(keyword)
+    keywords = build_smart_keywords(word, example, t, topic)
+    print(f"[BG] word='{word}' topic='{topic}' theme='{t}'")
+    print(f"[BG] Keyword chain: {keywords}")
 
-    if not url:
-        return None
+    for kw in keywords:
+        print(f"[BG] Thử: '{kw}'")
+        url = None
+        if src == "pexels":
+            url = fetch_pexels_video(kw)
+        elif src == "pixabay":
+            url = fetch_pixabay_video(kw)
+        elif src == "giphy":
+            url = fetch_giphy_gif(kw)
+        elif src == "mixkit":
+            url = fetch_mixkit_video(kw)
 
-    ok = download_bg_file(url, cache_path)
-    return cache_path if ok else None
+        if url:
+            print(f"[BG] ✅ Tìm thấy với '{kw}'")
+            ok = download_bg_file(url, cache_path)
+            return cache_path if ok else None
+
+    print(f"[BG] ❌ Không tìm thấy video nào cho '{word}' / '{topic}'")
+    return None
 
 def get_logo_overlay_filter(logo_path, size, pos, alpha):
         """Tạo FFmpeg filter string để overlay logo PNG"""
@@ -786,6 +926,7 @@ class VideoEngine:
         self.total = 0
         self.done_count = 0
         self.running = False
+        self.current_topic = ""  # Chủ đề bài viết — truyền từ PostManager khi render
 
     def log(self, msg):
         if self.log_fn:
@@ -965,7 +1106,7 @@ $s.Dispose();
 
     #     return None, seg_mp4
     
-    def render_segment(self, word, meaning, example, vid_idx, seg_idx):
+    def render_segment(self, word, meaning, example, vid_idx, seg_idx, topic: str = ""):
         ensure_output_dir()
 
         prefix      = os.path.join(OUTPUT_DIR, f"_tts_{vid_idx}_{seg_idx}")
@@ -1025,8 +1166,12 @@ $s.Dispose();
         bg_file = None
         if BG_SOURCE != "none":
             try:
-                bg_file = get_bg_video(build_search_keyword(word), BG_SOURCE)
-            except Exception:
+                bg_file = get_bg_video(
+                    word, example, BG_SOURCE, VIDEO_THEME,
+                    topic=topic or self.current_topic
+                )
+            except Exception as e:
+                print(f"[BG] Exception: {e}")
                 bg_file = None
 
         # ===================== BUILD FFMPEG COMMAND =====================
@@ -1181,7 +1326,10 @@ $s.Dispose();
                 if self.stop_event.is_set():
                     return
                 self.log(f"  🔊 [{seg_idx}/6] {word} | {meaning}")
-                _, seg = self.render_segment(word, meaning, example, vid_idx, seg_idx)
+                _, seg = self.render_segment(
+                    word, meaning, example, vid_idx, seg_idx,
+                    topic=self.current_topic
+                )
                 segs.append(seg)
 
             out = os.path.join(OUTPUT_DIR, f"vocab_video_{vid_idx + 1:03d}.mp4")
@@ -1441,16 +1589,18 @@ class App:
         theme_grid.pack(anchor="w", padx=10, pady=(0, 8))
         themes = [
             ("🚫 Không dùng", "none"),
-            ("😂 Hài hước", "funny"),
-            ("👶 Trẻ em", "kids"),
+            ("😂 Hài hước",   "funny"),
+            ("👶 Trẻ em",     "kids"),
             ("🎯 Nghiêm túc", "serious"),
-            ("🌿 Thiên nhiên", "nature"),
-            ("🎨 Hoạt hình", "cartoon"),
+            ("🌿 Thiên nhiên","nature"),
+            ("🎨 Hoạt hình",  "cartoon"),
+            ("⚡ Anime",      "anime"),
+            ("🏃 Thể thao",   "sport"),
         ]
         for col, (label, val) in enumerate(themes):
             tk.Radiobutton(theme_grid, text=label, variable=self.video_theme_var,
                            value=val, bg="#f0f4f8",
-                           font=("Segoe UI", 10)).grid(row=0, column=col, padx=8, sticky="w")
+                           font=("Segoe UI", 10)).grid(row=col // 4, column=col % 4, padx=8, pady=2, sticky="w")
 
         self.pexels_key_var = tk.StringVar(value=PEXELS_API_KEY)
         self.pixabay_key_var = tk.StringVar(value=PIXABAY_API_KEY)
@@ -1981,17 +2131,19 @@ class App:
 # =========================================================
 # MAIN
 # =========================================================
-def debug_bg_video(keyword="dog"):
-    """Test toàn bộ pipeline lấy video background"""
+def debug_bg_video(word="duck", example="The duck swims in the pond."):
+    """Test toàn bộ pipeline lấy video background với smart keyword"""
     import traceback
 
     print(f"\n{'='*50}")
-    print(f"🔍 DEBUG: get_bg_video('{keyword}', '{BG_SOURCE}')")
+    print(f"🔍 DEBUG: get_bg_video(word='{word}', theme='{VIDEO_THEME}', src='{BG_SOURCE}')")
+    kw_chain = build_smart_keywords(word, example, VIDEO_THEME)
+    print(f"🔑 Keyword chain: {kw_chain}")
     print(f"{'='*50}")
 
     # Step 1: Kiểm tra API key
     print(f"\n[1] API Keys:")
-    print(f"    PEXELS  : {'✅ Có' if PEXELS_API_KEY else '❌ Trống'} ({PEXELS_API_KEY[:10]}...)")
+    print(f"    PEXELS  : {'✅ Có' if PEXELS_API_KEY else '❌ Trống'} ({PEXELS_API_KEY[:10] if PEXELS_API_KEY else ''}...)")
     print(f"    PIXABAY : {'✅ Có' if PIXABAY_API_KEY else '❌ Trống'}")
     print(f"    GIPHY   : {'✅ Có' if GIPHY_API_KEY else '❌ Trống'}")
     print(f"    BG_SOURCE: {BG_SOURCE}")

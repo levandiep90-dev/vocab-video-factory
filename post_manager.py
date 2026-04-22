@@ -808,7 +808,7 @@ class PostManagerTab:
 
         # 4. Render video — gọi qua VideoEngine của app chính
         self._pub_log("🎬 Đang render video...")
-        video_path = self._render_video_for_post(pid, words)
+        video_path = self._render_video_for_post(pid, words, topic_name=topic_name)
         if video_path:
             self.store.update_post(pid, video_path=video_path)
             self._pub_log(f"✅ Video: {video_path}")
@@ -818,7 +818,8 @@ class PostManagerTab:
         # 5. Đăng
         self._do_publish(pid, do_fb, do_yt)
 
-    def _render_video_for_post(self, pid: str, words: list) -> str:
+    def _render_video_for_post(self, pid: str, words: list,
+                                topic_name: str = "") -> str:
         """Render 1 video từ 6 từ và trả về path file output."""
         try:
             from main_pro_plus_v4 import ai_lookup_word, AI_PROVIDER, GEMINI_API_KEY, OUTPUT_DIR
@@ -849,12 +850,15 @@ class PostManagerTab:
                 done_event.set()
 
             engine = self.app.engine
-            # Gán done_fn tạm
-            old_done = engine.done_fn
-            engine.done_fn = on_done
+            # Truyền chủ đề để video background tìm kiếm phù hợp hơn
+            old_topic       = engine.current_topic
+            old_done        = engine.done_fn
+            engine.current_topic = topic_name
+            engine.done_fn  = on_done
             engine.start([row])
             done_event.wait(timeout=300)
-            engine.done_fn = old_done
+            engine.done_fn       = old_done
+            engine.current_topic = old_topic
             return result_path[0]
         except Exception as e:
             self._pub_log(f"❌ Render lỗi: {e}")
@@ -1031,8 +1035,10 @@ class CreatePostDialog(tk.Toplevel):
             return
         self.status_var.set("🎬 Đang render video...")
         def run():
-            words = self.manager.store.get_posts().get(pid, {}).get("words", [])
-            vp = self.manager._render_video_for_post(pid, words)
+            post = self.manager.store.get_posts().get(pid, {})
+            words = post.get("words", [])
+            topic_name = self.manager.store.get_topic_name(post.get("topic_id", ""))
+            vp = self.manager._render_video_for_post(pid, words, topic_name=topic_name)
             if vp:
                 self.manager.store.update_post(pid, video_path=vp)
                 self.manager.refresh_posts()
@@ -1047,8 +1053,10 @@ class CreatePostDialog(tk.Toplevel):
             return
         self.status_var.set("🎬 Đang render video...")
         def run():
-            words = self.manager.store.get_posts().get(pid, {}).get("words", [])
-            vp = self.manager._render_video_for_post(pid, words)
+            post = self.manager.store.get_posts().get(pid, {})
+            words = post.get("words", [])
+            topic_name = self.manager.store.get_topic_name(post.get("topic_id", ""))
+            vp = self.manager._render_video_for_post(pid, words, topic_name=topic_name)
             if vp:
                 self.manager.store.update_post(pid, video_path=vp)
                 self.manager.refresh_posts()
