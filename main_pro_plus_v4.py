@@ -1,6 +1,7 @@
 import os
 import sys
 import csv
+from dict_manager_ui import open_dict_manager_window
 import json
 import random
 import threading
@@ -13,6 +14,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 from dictionary_lib import get_dict, lookup_word, search_words
+
+import asyncio
+import sys
+
+try:
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+except AttributeError:
+    pass  # Python < 3.8 hoặc non-Windows, bỏ qua
+
 
 
 # =========================================================
@@ -38,8 +49,8 @@ GRADIENT_THEMES = [
 ]
 
 # ===== LOGO CONFIG =====
-LOGO_ENABLED = False
-LOGO_PATH    = ""       # đường dẫn file PNG
+LOGO_ENABLED = True
+LOGO_PATH    = os.path.join(BASE_DIR, "logo.jpg")       # đường dẫn file PNG
 LOGO_SIZE    = 80       # kích thước px
 LOGO_POS     = "top-left"   # top-left | top-right | bottom-left | bottom-right
 LOGO_ALPHA   = 0.85     # độ trong suốt
@@ -47,7 +58,7 @@ LOGO_ALPHA   = 0.85     # độ trong suốt
 # =========================================================
 # AI CONFIG
 # =========================================================
-AI_PROVIDER = "offline"
+AI_PROVIDER = "gemini"
 GEMINI_API_KEY = "AIzaSyCzVQJOuQBq3PrVq6QmZSYW0p3vEBZyRz4"
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
@@ -71,20 +82,22 @@ GIPHY_API_KEY     = "UDw6zTOcvK4sn9GrQpOGf27hd8LKTNvA"
 
 BG_VIDEO_DIR = os.path.join(BASE_DIR, "bg_cache")  # cache video tải về
 
-# =====================================================
-# THÊM LẠI PROMPT_TEMPLATE (đã bị xóa nhầm)
-# =====================================================
-PROMPT_TEMPLATE = """Bạn là từ điển tiếng Anh - tiếng Việt.
-Cho từ tiếng Anh: "{word}"
-Hãy trả về JSON theo đúng định dạng sau (không giải thích thêm):
-{{"meaning": "nghĩa tiếng Việt ngắn gọn", "example": "1 câu ví dụ tiếng Anh đơn giản dưới 10 từ"}}"""
-
-
 # =========================================================
 # AI LOOKUP
 # =========================================================
+_GEMINI_PROMPT = (
+    'Dịch từ tiếng Anh sang tiếng Việt. Quy tắc bắt buộc:\n'
+    '- meaning: CHỈ 1-3 từ tiếng Việt, KHÔNG giải thích, KHÔNG dấu câu thừa\n'
+    '- example: 1 câu tiếng Anh đơn giản, tối đa 10 từ\n'
+    'Ví dụ đúng: duck → {{"meaning":"con vịt","example":"The duck swims in the lake."}}\n'
+    'Ví dụ đúng: happy → {{"meaning":"vui vẻ","example":"She is very happy today."}}\n'
+    'Ví dụ SAI: duck → {{"meaning":"một loài chim sống dưới nước","example":"..."}}\n'
+    'Từ cần dịch: "{word}"\n'
+    'Chỉ trả về JSON, không thêm gì khác.'
+)
+
 def _call_gemini(word, api_key):
-    prompt = PROMPT_TEMPLATE.format(word=word)
+    prompt = _GEMINI_PROMPT.format(word=word)
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
@@ -99,103 +112,45 @@ def _call_gemini(word, api_key):
     text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
     text = text.replace("```json", "").replace("```", "").strip()
     result = json.loads(text)
-    return result["meaning"], result["example"]
-
-
-# ✅ MỚI - dùng dictionary_lib
-def lookup_word_offline(word):
-    result = lookup_word(word)   # gọi từ dictionary_lib
-    if result:
-        meaning, example, group = result
-        return meaning, example
-    return f"[{word}]", f"This is {word}."
+    meaning = result["meaning"].strip()
+    example = result["example"].strip()
+    # Bảo vệ: nếu AI vẫn trả về nghĩa dài → lấy phần trước dấu phẩy/chấm đầu tiên
+    if len(meaning) > 20:
+        meaning = meaning.split(",")[0].split(".")[0].strip()
+    return meaning, example
 
 
 def ai_lookup_word(word, provider=None, gemini_key=None):
     p = provider or AI_PROVIDER
     gk = gemini_key or GEMINI_API_KEY
 
-    # ✅ 1. OFFLINE trước - dùng dictionary_lib
+    # 1. Offline dict trước (nhanh nhất)
     result = lookup_word(word)
     if result:
         meaning, example, group = result
         return meaning, example, "offline"
 
-    # ✅ 2. GEMINI
+    # 2. Gemini AI (nếu có API key)
     if p == "gemini" and gk:
         try:
             meaning, example = _call_gemini(word, gk)
             if meaning and example:
+                save_to_offline(word, meaning, example)
                 return meaning, example, "gemini"
         except Exception as e:
             print(f"[AI] Gemini fail: {word} → {e}")
 
-    # ✅ 3. ONLINE DICTIONARY
-    meaning, example = lookup_online_dictionary(word)
-    if meaning:
-        save_to_offline(word, meaning, example)
-        return meaning, example, "online-dict"
-
-    # ✅ 4. GOOGLE TRANSLATE
+    # 3. Google Translate — dịch từ gốc trực tiếp → nghĩa ngắn gọn
     vi = translate_google(word)
     if vi:
-        return vi, f"This is {word}.", "google"
+        example = f"This is a {word}." if len(word.split()) == 1 else f"{word.capitalize()}."
+        save_to_offline(word, vi, example)
+        return vi, example, "google"
 
-    # ✅ 5. FALLBACK
-    return f"(nghĩa của {word})", f"This is {word}.", "fallback"
-
-def lookup_online_dictionary(word):
-    try:
-        import requests
-
-        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
-        r = requests.get(url, timeout=10)
-
-        if r.status_code != 200:
-            return None, None
-
-        data = r.json()
-        meanings = data[0].get("meanings", [])
-
-        if not meanings:
-            return None, None
-
-        # ✅ Ưu tiên noun (đặc biệt cho duck)
-        noun_meaning = None
-        for m in meanings:
-            if m.get("partOfSpeech") == "noun":
-                noun_meaning = m
-                break
-
-        target = noun_meaning or meanings[0]
-
-        definition = target["definitions"][0]
-        meaning_en = definition.get("definition", "")
-        example = definition.get("example", f"This is {word}.")
-
-        # ✅ dịch
-        meaning_vi = translate_google(meaning_en)
-
-        # ❌ QUAN TRỌNG: nếu dịch fail → bỏ luôn
-        if not meaning_vi or len(meaning_vi.strip()) == 0:
-            return None, None
-
-        # ✅ cắt ngắn nghĩa
-        meaning_vi = meaning_vi.split(".")[0]
-        if len(meaning_vi) > 50:
-            meaning_vi = meaning_vi[:50]
-
-        return meaning_vi, example
-
-    except Exception as e:
-        print(f"[ONLINE] dictionaryapi fail: {e}")
-        return None, None
+    # 4. Fallback
+    return f"({word})", f"This is {word}.", "fallback"
 
 
-    except Exception as e:
-        print(f"[ONLINE] dictionaryapi fail: {e}")
-        return None, None
-    
 def translate_google(word):
     """Dịch Anh → Việt"""
     try:
@@ -456,86 +411,126 @@ def tts_edge(text, output_file, voice=None):
 def is_audio_valid(path):
     return os.path.exists(path) and os.path.getsize(path) > 1000
 
-def make_tts_smart(word, meaning, example, prefix):
+import asyncio
+import time
+
+async def _edge_tts_async_safe(text: str, output_file: str, voice: str) -> bool:
+    """Async Edge TTS với timeout bảo vệ."""
+    try:
+        communicate = edge_tts.Communicate(text, voice)
+        await asyncio.wait_for(communicate.save(output_file), timeout=20.0)
+        return True
+    except Exception as e:
+        print(f"[EdgeTTS] Lỗi: {e}")
+        return False
+
+
+def tts_edge_safe(text: str, output_file: str, voice: str = None) -> bool:
+    """
+    Edge TTS với retry 3 lần + fallback voice.
+    Trả về True nếu thành công.
+    """
+    v = voice or EDGE_VOICE_VI
+    
+    # Làm sạch text trước khi TTS
+    clean_text = text.strip()
+    if not clean_text:
+        clean_text = "..."
+    
+    # Thử 3 lần với voice chính
+    for attempt in range(3):
+        try:
+            asyncio.run(_edge_tts_async_safe(clean_text, output_file, v))
+            if is_audio_valid(output_file):
+                return True
+            print(f"[EdgeTTS] Attempt {attempt+1}: audio invalid, retry...")
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"[EdgeTTS] Attempt {attempt+1} fail: {e}")
+            time.sleep(0.5)
+    
+    # Fallback: thử voice khác
+    fallback_voices = {
+        EDGE_VOICE_VI: "vi-VN-NamMinhNeural",   # fallback VI
+        EDGE_VOICE_EN: "en-US-GuyNeural",         # fallback EN
+    }
+    fallback = fallback_voices.get(v)
+    if fallback:
+        print(f"[EdgeTTS] Thử fallback voice: {fallback}")
+        try:
+            asyncio.run(_edge_tts_async_safe(clean_text, output_file, fallback))
+            if is_audio_valid(output_file):
+                return True
+        except Exception as e:
+            print(f"[EdgeTTS] Fallback fail: {e}")
+    
+    return False
+
+
+def make_tts_smart(word: str, meaning: str, example: str, prefix: str) -> list:
+    """
+    Tạo 3 file audio: word (EN), meaning (VI), example (EN).
+    Có retry + fallback cho từng phần.
+    """
     wav_word = prefix + "_word.mp3"
     wav_mean = prefix + "_mean.mp3"
     wav_ex   = prefix + "_ex.mp3"
+    PAUSE = "..."
 
-    PAUSE = "..."  # pause nhẹ giữa các đoạn
+    def make_audio(text, output, voice, label):
+        """Helper tạo audio với retry, tạo silence nếu fail hoàn toàn."""
+        ok = False
+        
+        if VOICE_MODE == "edge":
+            ok = tts_edge_safe(text + PAUSE, output, voice)
+        elif VOICE_MODE == "eleven":
+            try:
+                tts_elevenlabs(text + PAUSE, output)
+                ok = is_audio_valid(output)
+            except Exception as e:
+                print(f"[ElevenLabs] {label} fail: {e}")
+                # Fallback sang Edge TTS
+                ok = tts_edge_safe(text, output, voice)
+        else:  # hybrid
+            if label in ("word", "example"):
+                try:
+                    tts_elevenlabs(text + PAUSE, output)
+                    ok = is_audio_valid(output)
+                except Exception:
+                    ok = tts_edge_safe(text, output, EDGE_VOICE_EN)
+            else:  # meaning
+                ok = tts_edge_safe(text + PAUSE, output, EDGE_VOICE_VI)
+        
+        # Nếu vẫn fail → tạo silence 1 giây
+        if not ok:
+            print(f"[TTS] ⚠️ {label} '{text[:20]}' fail hoàn toàn → tạo silence")
+            _create_silence(output, duration=1.0)
+        
+        return output
 
-    if VOICE_MODE == "edge":
-        try:
-            tts_edge(word + PAUSE, wav_word, EDGE_VOICE_EN)
-            if not is_audio_valid(wav_word):
-                raise Exception("word audio empty")
-        except Exception as e:
-            print(f"[TTS] Retry word: {word} → {e}")
-            tts_edge(word, wav_word, EDGE_VOICE_EN)
-
-        try:
-            tts_edge(meaning + PAUSE, wav_mean, EDGE_VOICE_VI)
-            if not is_audio_valid(wav_mean):
-                raise Exception("meaning audio empty")
-        except Exception as e:
-            print(f"[TTS] Retry meaning: {meaning} → {e}")
-            tts_edge(meaning, wav_mean, EDGE_VOICE_VI)
-
-        try:
-            tts_edge(example + PAUSE, wav_ex, EDGE_VOICE_EN)
-            if not is_audio_valid(wav_ex):
-                raise Exception("example audio empty")
-        except Exception as e:
-            print(f"[TTS] Retry example: {example} → {e}")
-            tts_edge(example, wav_ex, EDGE_VOICE_EN)
-
-    elif VOICE_MODE == "eleven":
-        try:
-            tts_elevenlabs(word + PAUSE, wav_word)
-            if not is_audio_valid(wav_word):
-                raise Exception("word audio empty")
-        except Exception as e:
-            print(f"[TTS] Eleven fail word: {e}")
-            tts_elevenlabs(word, wav_word)
-
-        try:
-            tts_elevenlabs(meaning + PAUSE, wav_mean)
-            if not is_audio_valid(wav_mean):
-                raise Exception("meaning audio empty")
-        except Exception as e:
-            print(f"[TTS] Eleven fail meaning: {e}")
-            tts_elevenlabs(meaning, wav_mean)
-
-        try:
-            tts_elevenlabs(example + PAUSE, wav_ex)
-            if not is_audio_valid(wav_ex):
-                raise Exception("example audio empty")
-        except Exception as e:
-            print(f"[TTS] Eleven fail example: {e}")
-            tts_elevenlabs(example, wav_ex)
-
-    else:  # hybrid
-        try:
-            tts_elevenlabs(word + PAUSE, wav_word)
-            if not is_audio_valid(wav_word):
-                raise Exception("empty")
-        except:
-            tts_edge(word + PAUSE, wav_word, EDGE_VOICE_EN)
-
-        try:
-            tts_elevenlabs(example + PAUSE, wav_ex)
-            if not is_audio_valid(wav_ex):
-                raise Exception("empty")
-        except:
-            tts_edge(example + PAUSE, wav_ex, EDGE_VOICE_EN)
-
-        try:
-            tts_edge(meaning + PAUSE, wav_mean, EDGE_VOICE_VI)
-            if not is_audio_valid(wav_mean):
-                raise Exception("empty")
-        except:
-            tts_elevenlabs(meaning + PAUSE, wav_mean)
+    make_audio(word,    wav_word, EDGE_VOICE_EN, "word")
+    make_audio(meaning, wav_mean, EDGE_VOICE_VI, "meaning")
+    make_audio(example, wav_ex,   EDGE_VOICE_EN, "example")
 
     return [wav_word, wav_mean, wav_ex]
+
+
+def _create_silence(output_file: str, duration: float = 1.0):
+    """Tạo file audio im lặng bằng FFmpeg làm fallback."""
+    cmd = [
+        FFMPEG_PATH, "-y",
+        "-f", "lavfi",
+        "-i", f"anullsrc=r=44100:cl=mono",
+        "-t", str(duration),
+        "-c:a", "libmp3lame",
+        "-ar", "44100",
+        "-b:a", "128k",
+        output_file
+    ]
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+    except Exception as e:
+        print(f"[Silence] Tạo silence fail: {e}")
 
 
 def concat_audio_mp3(files, output):
@@ -843,145 +838,6 @@ $s.Dispose();
             return max(d + 0.5, 3.0)
         except Exception:
             return 4.0
-        
-    # def render_segment(self, word, meaning, example, vid_idx, seg_idx):
-    #     ensure_output_dir()
-
-    #     prefix    = os.path.join(OUTPUT_DIR, f"_tts_{vid_idx}_{seg_idx}")
-    #     seg_mp4   = os.path.join(OUTPUT_DIR, f"_s{vid_idx}_{seg_idx}.mp4")
-    #     final_audio = prefix + "_final.mp3"
-
-    #     # --- TTS ---
-    #     audio_parts = make_tts_smart(word, meaning, example, prefix)
-    #     concat_audio_mp3(audio_parts, final_audio)
-    #     dur = self.get_duration(final_audio)
-
-    #     # --- Text overlay ---
-    #     w_text       = safe_ffmpeg_text(word.upper())
-    #     m_text       = safe_ffmpeg_text(f"({meaning})")
-    #     e_text       = safe_ffmpeg_text(example)
-    #     counter_text = safe_ffmpeg_text(f"{seg_idx}/6")
-
-    #     vf_text = ",".join([
-    #         f"drawtext=fontfile='{FONT_PATH}':text='{counter_text}'"
-    #         f":fontcolor=white@0.5:fontsize=32:x=w-text_w-30:y=30",
-
-    #         f"drawtext=fontfile='{FONT_PATH}':text='{w_text}'"
-    #         f":fontcolor=#FFD700:fontsize=80"
-    #         f":x=(w-text_w)/2:y=(h/2)-140"
-    #         f":shadowcolor=black:shadowx=3:shadowy=3",
-
-    #         f"drawtext=fontfile='{FONT_PATH}':text='{m_text}'"
-    #         f":fontcolor=white:fontsize=50"
-    #         f":x=(w-text_w)/2:y=(h/2)-20"
-    #         f":shadowcolor=black:shadowx=2:shadowy=2",
-
-    #         f"drawtext=fontfile='{FONT_PATH}':text='{e_text}'"
-    #         f":fontcolor=#cccccc:fontsize=34"
-    #         f":x=(w-text_w)/2:y=(h/2)+80"
-    #         f":shadowcolor=black:shadowx=1:shadowy=1",
-    #     ])
-
-    #     # --- Lấy video background ---
-    #     bg_file = None
-    #     if BG_SOURCE != "none":
-    #         try:
-    #             bg_file = get_bg_video(word, BG_SOURCE)
-    #         except Exception:
-    #             bg_file = None
-
-    #             # --- Build FFmpeg command ---
-    #             if bg_file and os.path.exists(bg_file):
-    #                 is_gif = bg_file.endswith(".gif")
-    #                 fps = "15" if is_gif else "25"
-    #                 loop_flag = ["-ignore_loop", "0"] if is_gif else []
-
-    #                 vf = (
-    #                     f"scale={VIDEO_W}:{VIDEO_H}:force_original_aspect_ratio=increase,"
-    #                     f"crop={VIDEO_W}:{VIDEO_H},"
-    #                     f"format=yuv420p,"
-    #                     + vf_text
-    #                 )
-
-    #                 if LOGO_ENABLED and LOGO_PATH and os.path.exists(LOGO_PATH):
-    #                     # ✅ FIX: tính tọa độ đúng
-    #                     margin = 20
-    #                     pos_map = {
-    #                         "top-left":     f"{margin}:{margin}",
-    #                         "top-right":    f"W-w-{margin}:{margin}",
-    #                         "bottom-left":  f"{margin}:H-h-{margin}",
-    #                         "bottom-right": f"W-w-{margin}:H-h-{margin}",
-    #                     }
-    #                     xy = pos_map.get(LOGO_POS, f"{margin}:{margin}")
-
-    #                     safe_logo = LOGO_PATH.replace("\\", "/").replace(":", "\\:")
-
-    #                     # ✅ FIX: complex_filter đúng cú pháp
-    #                     complex_filter = (
-    #                         f"[0:v]scale={VIDEO_W}:{VIDEO_H}:force_original_aspect_ratio=increase,"
-    #                         f"crop={VIDEO_W}:{VIDEO_H},format=yuv420p,"
-    #                         f"{vf_text}[bg];"
-    #                         f"[2:v]scale={LOGO_SIZE}:-1,format=rgba,"
-    #                         f"colorchannelmixer=aa={LOGO_ALPHA}[logo];"
-    #                         f"[bg][logo]overlay={xy}[out]"
-    #                     )
-
-    #                     cmd = (
-    #                         [FFMPEG_PATH, "-y"]
-    #                         + loop_flag
-    #                         + ["-stream_loop", "-1", "-i", bg_file]
-    #                         + ["-i", final_audio]
-    #                         + ["-i", LOGO_PATH]
-    #                         + ["-filter_complex", complex_filter]
-    #                         + ["-map", "[out]", "-map", "1:a"]
-    #                         + ["-t", str(dur), "-r", fps]
-    #                         + ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
-    #                         + ["-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "44100"]
-    #                         + ["-shortest", seg_mp4]
-    #                     )
-    #                 else:
-    #                     # Không có logo
-    #                     cmd = (
-    #                         [FFMPEG_PATH, "-y"]
-    #                         + loop_flag
-    #                         + ["-stream_loop", "-1", "-i", bg_file]
-    #                         + ["-i", final_audio]
-    #                         + ["-vf", vf, "-t", str(dur), "-r", fps]
-    #                         + ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
-    #                         + ["-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "44100"]
-    #                         + ["-shortest", seg_mp4]
-    #                     )
-    #             else:
-    #                 # Fallback: gradient màu
-    #                 theme = random.choice(GRADIENT_THEMES)
-    #                 bg_color = theme[0]
-    #                 cmd = [
-    #                     FFMPEG_PATH, "-y",
-    #                     "-f", "lavfi",
-    #                     "-i", f"color=c={bg_color}:s={VIDEO_W}x{VIDEO_H}:d={dur}",
-    #                     "-i", final_audio,
-    #                     "-vf", vf_text,
-    #                     "-shortest",
-    #                     "-c:v", "libx264",
-    #                     "-pix_fmt", "yuv420p",
-    #                     "-c:a", "aac",
-    #                     seg_mp4
-    #                 ]
-
-    #     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    #     # Cleanup
-    #     for f in audio_parts + [final_audio]:
-    #         try:
-    #             if os.path.exists(f):
-    #                 os.remove(f)
-    #         except Exception:
-    #             pass
-
-    #     if r.returncode != 0:
-    #         raise RuntimeError(r.stderr[-500:] or "Lỗi render segment")
-
-    #     return None, seg_mp4
     
     def render_segment(self, word, meaning, example, vid_idx, seg_idx):
         ensure_output_dir()
@@ -1963,24 +1819,8 @@ class App:
 
     # ==================== DICT MANAGER ====================
     def open_dict_manager(self):
-        script = os.path.join(BASE_DIR, "dict_manager_ui.py")
-
-        if not os.path.exists(script):
-            messagebox.showerror(
-                "Không tìm thấy file",
-                f"Không tìm thấy:\n{script}\n\n"
-                "Hãy đảm bảo file dict_manager_ui.py nằm cùng thư mục với chương trình."
-            )
-            return
-
-        try:
-            subprocess.Popen(
-                [sys.executable, script],
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            )
-            self.safe_log("📚 Đã mở Dictionary Manager")
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể mở Dictionary Manager:\n{e}")
+        open_dict_manager_window(parent=self.root)
+        self.safe_log("📚 Đã mở Dictionary Manager")
 
 
 # =========================================================
